@@ -1,0 +1,279 @@
+// CyberSalama — Prisma Schema
+// Database: PostgreSQL via Supabase
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// ─────────────────────────────────────────────────────────────────
+// USERS
+// ─────────────────────────────────────────────────────────────────
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  phone         String?   @unique   // WhatsApp number (intl format)
+  email         String?   @unique
+  passwordHash  String?
+  language      Language  @default(ENGLISH)
+  area          String?   // Nairobi estate / area
+  role          Role      @default(USER)
+  badgePoints   Int       @default(0)
+  streakDays    Int       @default(0)
+  lastActiveAt  DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  reports       FraudReport[]
+  quizAttempts  QuizAttempt[]
+  badges        UserBadge[]
+  sessions      Session[]
+
+  @@map("users")
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+// ─────────────────────────────────────────────────────────────────
+// THREAT RADAR — crowd-sourced fraud reports
+// ─────────────────────────────────────────────────────────────────
+model FraudReport {
+  id          String       @id @default(cuid())
+  userId      String?
+  type        ThreatType
+  title       String
+  description String
+  area        String       // Nairobi estate
+  latitude    Float?
+  longitude   Float?
+  severity    Severity     @default(MEDIUM)
+  status      ReportStatus @default(PENDING)
+  source      ReportSource @default(WEB)
+  verified    Boolean      @default(false)
+  upvotes     Int          @default(0)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  user    User?    @relation(fields: [userId], references: [id])
+  alerts  Alert[]
+
+  @@map("fraud_reports")
+}
+
+// ─────────────────────────────────────────────────────────────────
+// SALAMA LEARN — security tips library
+// ─────────────────────────────────────────────────────────────────
+model Tip {
+  id          String     @id @default(cuid())
+  titleEn     String
+  titleSw     String
+  bodyEn      String     @db.Text
+  bodySw      String     @db.Text
+  category    TipCategory
+  tags        String[]
+  difficulty  Difficulty @default(BEGINNER)
+  published   Boolean    @default(true)
+  views       Int        @default(0)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  @@map("tips")
+}
+
+// ─────────────────────────────────────────────────────────────────
+// SALAMA ALERT — push alert broadcasts
+// ─────────────────────────────────────────────────────────────────
+model Alert {
+  id          String      @id @default(cuid())
+  reportId    String?
+  titleEn     String
+  titleSw     String
+  bodyEn      String
+  bodySw      String
+  area        String?     // null = Kenya-wide
+  severity    Severity
+  active      Boolean     @default(true)
+  sentViaBot  Boolean     @default(false)
+  createdAt   DateTime    @default(now())
+  expiresAt   DateTime?
+
+  report FraudReport? @relation(fields: [reportId], references: [id])
+
+  @@map("alerts")
+}
+
+// ─────────────────────────────────────────────────────────────────
+// SALAMA QUIZ
+// ─────────────────────────────────────────────────────────────────
+model Quiz {
+  id          String   @id @default(cuid())
+  titleEn     String
+  titleSw     String
+  category    TipCategory
+  difficulty  Difficulty @default(BEGINNER)
+  points      Int      @default(10)
+  published   Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  questions QuizQuestion[]
+  attempts  QuizAttempt[]
+
+  @@map("quizzes")
+}
+
+model QuizQuestion {
+  id            String   @id @default(cuid())
+  quizId        String
+  questionEn    String
+  questionSw    String
+  optionsEn     String[] // 4 options
+  optionsSw     String[]
+  correctIndex  Int      // 0-3
+  explanationEn String?
+  explanationSw String?
+  order         Int
+
+  quiz Quiz @relation(fields: [quizId], references: [id], onDelete: Cascade)
+
+  @@map("quiz_questions")
+}
+
+model QuizAttempt {
+  id        String   @id @default(cuid())
+  userId    String
+  quizId    String
+  score     Int
+  total     Int
+  passed    Boolean
+  answers   Json     // { questionId: selectedIndex }
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+  quiz Quiz @relation(fields: [quizId], references: [id])
+
+  @@map("quiz_attempts")
+}
+
+// ─────────────────────────────────────────────────────────────────
+// BADGES
+// ─────────────────────────────────────────────────────────────────
+model Badge {
+  id          String   @id @default(cuid())
+  name        String
+  description String
+  icon        String   // emoji or icon name
+  pointsReq   Int      @default(0)
+  createdAt   DateTime @default(now())
+
+  users UserBadge[]
+
+  @@map("badges")
+}
+
+model UserBadge {
+  id        String   @id @default(cuid())
+  userId    String
+  badgeId   String
+  earnedAt  DateTime @default(now())
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  badge Badge @relation(fields: [badgeId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, badgeId])
+  @@map("user_badges")
+}
+
+// ─────────────────────────────────────────────────────────────────
+// WHATSAPP BOT — session state tracking
+// ─────────────────────────────────────────────────────────────────
+model BotSession {
+  id        String   @id @default(cuid())
+  phone     String   @unique
+  state     String   @default("IDLE") // conversation state machine
+  language  Language @default(ENGLISH)
+  context   Json?    // temporary context data
+  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now())
+
+  @@map("bot_sessions")
+}
+
+// ─────────────────────────────────────────────────────────────────
+// ENUMS
+// ─────────────────────────────────────────────────────────────────
+enum Role {
+  USER
+  MODERATOR
+  ADMIN
+}
+
+enum Language {
+  ENGLISH
+  SWAHILI
+}
+
+enum ThreatType {
+  PHISHING
+  SIM_SWAP
+  MPESA_FRAUD
+  FAKE_LOAN
+  ACCOUNT_TAKEOVER
+  FAKE_JOB
+  ROMANCE_SCAM
+  INVESTMENT_SCAM
+  OTHER
+}
+
+enum Severity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum ReportStatus {
+  PENDING
+  VERIFIED
+  DISMISSED
+  RESOLVED
+}
+
+enum ReportSource {
+  WEB
+  WHATSAPP
+  ADMIN
+}
+
+enum TipCategory {
+  PASSWORDS
+  PHISHING
+  MPESA_SAFETY
+  SOCIAL_MEDIA
+  SIM_SWAP
+  PUBLIC_WIFI
+  ACCOUNT_SECURITY
+  SCAM_AWARENESS
+  DATA_PRIVACY
+  SAFE_BROWSING
+}
+
+enum Difficulty {
+  BEGINNER
+  INTERMEDIATE
+  ADVANCED
+}
