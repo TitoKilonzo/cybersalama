@@ -12,54 +12,62 @@ const RegisterSchema = z.object({
 })
 
 export async function POST(req: NextRequest) {
-  const body   = await req.json()
-  const parsed = RegisterSchema.safeParse(body)
+  try {
+    const body   = await req.json()
+    const parsed = RegisterSchema.safeParse(body)
 
-  if (!parsed.success) {
-    return NextResponse.json({ error: 'Invalid input', details: parsed.error.flatten() }, { status: 422 })
+    if (!parsed.success) {
+      return NextResponse.json({ error: 'Invalid input', details: parsed.error.flatten() }, { status: 422 })
+    }
+
+    const phone = parsed.data.phone?.trim() || undefined
+    const area = parsed.data.area?.trim() || undefined
+
+    const existing = await prisma.user.findFirst({
+      where: {
+        OR: [
+          { email: parsed.data.email },
+          ...(phone ? [{ phone }] : []),
+        ],
+      },
+    })
+
+    if (existing) {
+      return NextResponse.json({ error: 'Email or phone already registered' }, { status: 409 })
+    }
+
+    const passwordHash = await bcrypt.hash(parsed.data.password, 12)
+
+    const user = await prisma.user.create({
+      data: {
+        name:  parsed.data.name,
+        email: parsed.data.email,
+        phone: phone ?? null,
+        area:  area  ?? null,
+        passwordHash,
+      },
+    })
+
+    // Create session
+    const token     = crypto.randomUUID()
+    const expiresAt = new Date(Date.now() + 1000 * 60 * 60 * 24 * 7)
+
+    await prisma.session.create({
+      data: { userId: user.id, token, expiresAt },
+    })
+
+    const response = NextResponse.json({ ok: true, userId: user.id }, { status: 201 })
+    response.cookies.set('salama_session', token, {
+      httpOnly: true,
+      secure:   process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      expires:  expiresAt,
+      path:     '/',
+    })
+
+    return response
+  } catch (error) {
+    console.error('Register route error:', error)
+    return NextResponse.json({ error: 'Registration failed. Please try again.' }, { status: 500 })
   }
-
-  const existing = await prisma.user.findFirst({
-    where: {
-      OR: [
-        { email: parsed.data.email },
-        ...(parsed.data.phone ? [{ phone: parsed.data.phone }] : []),
-      ],
-    },
-  })
-
-  if (existing) {
-    return NextResponse.json({ error: 'Email or phone already registered' }, { status: 409 })
-  }
-
-  const passwordHash = await bcrypt.hash(parsed.data.password, 12)
-
-  const user = await prisma.user.create({
-    data: {
-      name:  parsed.data.name,
-      email: parsed.data.email,
-      phone: parsed.data.phone ?? null,
-      area:  parsed.data.area  ?? null,
-      passwordHash,
-    },
-  })
-
-  // Create session
-  const token     = crypto.randomUUID()
-  const expiresAt = new Date(Date.now() + 1000 * 60 * 60 * 24 * 7)
-
-  await prisma.session.create({
-    data: { userId: user.id, token, expiresAt },
-  })
-
-  const response = NextResponse.json({ ok: true, userId: user.id }, { status: 201 })
-  response.cookies.set('salama_session', token, {
-    httpOnly: true,
-    secure:   process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
-    expires:  expiresAt,
-    path:     '/',
-  })
-
-  return response
 }

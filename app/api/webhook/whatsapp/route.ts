@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import twilio from 'twilio'
 import { prisma } from '@/lib/prisma'
+import { Language } from '@prisma/client'
 import { handleBotMessage } from '@/lib/whatsapp/bot'
 
 const twilioClient = twilio(
@@ -38,11 +39,12 @@ export async function POST(req: NextRequest) {
     })
 
     // Update session state
+    const language: Language = (newLanguage ?? session.language) as Language
     await prisma.botSession.update({
       where: { phone },
       data: {
         state: newState,
-        language: newLanguage ?? session.language,
+        language,
         updatedAt: new Date(),
       },
     })

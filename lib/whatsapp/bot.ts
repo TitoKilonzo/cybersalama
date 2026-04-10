@@ -14,12 +14,14 @@
  */
 
 import { prisma } from '@/lib/prisma'
-import type { BotSession, Language } from '@prisma/client'
+
+
+import type { Language } from '@prisma/client'
 
 interface BotInput {
   phone:   string
   message: string
-  session: BotSession
+  session: { phone:string; state:string; language:Language; context:unknown; updatedAt:Date; createdAt:Date; id:string }
 }
 
 interface BotOutput {
@@ -83,7 +85,7 @@ const dailyTips = {
 }
 
 // Active alerts (in production: fetch from DB)
-async function getActiveAlerts(lang: Language): Promise<string> {
+async function getActiveAlerts(lang: string): Promise<string> {
   // In production: prisma.alert.findMany({ where: { active: true } })
   const en = `🚨 *Active SalamaAlerts*\n\n⚠️ *CRITICAL — Eastleigh & Mathare*\nSIM swap wave detected. Contact your telecom NOW to lock your SIM.\n\n⚠️ *HIGH — Nairobi-wide*\nFake KCB loan SMS circulating. DO NOT click any links.\n\n⚠️ *MEDIUM — Kawangware*\nFake Safaricom agents visiting homes. Do not share any info.\n\nFor full details visit: cybersalama.co.ke/alerts`
   const sw = `🚨 *Tahadhari za SalamaAlert*\n\n⚠️ *MUHIMU — Eastleigh na Mathare*\nWimbi la SIM swap limegunduliwa. Wasiliana na mtoa huduma wako SASA kufunga SIM yako.\n\n⚠️ *JUKUMU KUBWA — Nairobi nzima*\nSMS bandia za mkopo wa KCB zinasambazwa. USIBONYEZE viungo vyovyote.\n\n⚠️ *WASTANI — Kawangware*\nMawakala bandia wa Safaricom wanatembelea nyumba. Usitoe habari yoyote.\n\nKwa maelezo kamili tembelea: cybersalama.co.ke/alerts`
@@ -91,7 +93,7 @@ async function getActiveAlerts(lang: Language): Promise<string> {
 }
 
 // ─── AI-POWERED FREE QUESTION (fallback) ─────────────────────────
-async function answerFreeQuestion(question: string, lang: Language): Promise<string> {
+async function answerFreeQuestion(question: string, lang: string): Promise<string> {
   try {
     const sysPrompt = `You are SalamaBot, a cybersecurity assistant for communities in Nairobi, Kenya.
 You specialize in: M-Pesa fraud, SIM swap, phishing, account security, social media safety.

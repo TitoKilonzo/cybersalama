@@ -1,41 +1,45 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { auth } from '@/lib/auth'
 
 const PROTECTED = ['/dashboard']
 const CSRF_APIS = ['/api/reports', '/api/auth/register']
 
-export async function middleware(req: NextRequest) {
+export function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl
 
-  // ── CSRF protection on sensitive APIs ─────────────────────────────
+  // CSRF
   if (CSRF_APIS.some(p => pathname.startsWith(p))) {
-    const method = req.method.toUpperCase()
-    if (['POST','PUT','PATCH','DELETE'].includes(method)) {
+    if (['POST','PUT','PATCH','DELETE'].includes(req.method)) {
       const origin = req.headers.get('origin')
+      const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? req.nextUrl.origin
       const host   = req.headers.get('host')
-      const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? `https://${host}`
-      if (origin && !origin.startsWith(appUrl) && origin !== `https://${host}` && origin !== `http://${host}`) {
+      const allowed = new Set([appUrl, req.nextUrl.origin])
+      if (host) {
+        allowed.add(`https://${host}`)
+        allowed.add(`http://${host}`)
+      }
+      if (origin && !allowed.has(origin)) {
         return new NextResponse('Forbidden', { status: 403 })
       }
     }
   }
 
-  // ── WhatsApp webhook: require Twilio signature ────────────────────
-  if (pathname === '/api/webhook/whatsapp') {
-    if (!req.headers.get('x-twilio-signature')) {
-      return new NextResponse('Unauthorized', { status: 401 })
-    }
-    return NextResponse.next()
+  // Twilio webhook gate
+  if (pathname === '/api/webhook/whatsapp' && !req.headers.get('x-twilio-signature')) {
+    return new NextResponse('Unauthorized', { status: 401 })
   }
 
-  // ── Auth guard ─────────────────────────────────────────────────────
+  // Auth guard — check NextAuth JWT cookie OR legacy session cookie
   if (PROTECTED.some(p => pathname.startsWith(p))) {
-    // Check NextAuth session
-    const session = await auth()
-    // Also check legacy cookie session
-    const cookie  = req.cookies.get('salama_session')?.value
-    if (!session && !cookie) {
-      return NextResponse.redirect(new URL('/login', req.url))
+    const nextAuthToken = req.cookies.get('authjs.session-token')?.value
+                      || req.cookies.get('__Secure-authjs.session-token')?.value
+                      || req.cookies.get('next-auth.session-token')?.value
+                      || req.cookies.get('__Secure-next-auth.session-token')?.value
+    const legacyToken  = req.cookies.get('salama_session')?.value
+
+    if (!nextAuthToken && !legacyToken) {
+      const loginUrl = new URL('/login', req.url)
+      loginUrl.searchParams.set('callbackUrl', pathname)
+      return NextResponse.redirect(loginUrl)
     }
   }
 
@@ -43,5 +47,5 @@ export async function middleware(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/dashboard/:path*', '/api/reports/:path*', '/api/auth/:path*', '/api/webhook/whatsapp'],
+  matcher: ['/dashboard/:path*', '/api/reports/:path*', '/api/auth/register', '/api/webhook/whatsapp'],
 }

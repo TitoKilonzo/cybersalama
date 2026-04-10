@@ -103,15 +103,15 @@ export default function ThreatRadarPage() {
       </div>
 
       {/* Map + list */}
-      <div className="grid lg:grid-cols-3 gap-5" style={{ height: '520px' }}>
+      <div className="grid lg:grid-cols-3 gap-5 h-96 sm:h-[420px] lg:h-[520px]">
 
         {/* Map */}
-        <div className="lg:col-span-2 rounded-xl overflow-hidden border border-salama-500/15" style={{ height: '520px' }}>
+        <div className="lg:col-span-2 rounded-xl overflow-hidden border border-salama-500/15 h-96 sm:h-[420px] lg:h-[520px]">
           <ThreatMap reports={filtered} onSelect={setSelectedReport} selected={selectedReport} />
         </div>
 
         {/* Report list */}
-        <div className="glass rounded-xl border border-salama-500/15 flex flex-col overflow-hidden">
+        <div className="glass rounded-xl border border-salama-500/15 flex flex-col overflow-hidden h-96 sm:h-[420px] lg:h-[520px]">
           <div className="px-4 py-3 border-b border-ink-800 flex items-center justify-between">
             <span className="text-sm font-medium text-ink-200">{filtered.length} reports</span>
             <span className="text-xs text-ink-500">Click to locate</span>
